@@ -3,9 +3,10 @@ import joblib
 import pandas as pd
 from statsmodels.tsa.arima.model import ARIMA
 import requests
+from flask_restful import Resource, Api
 
 app = Flask(__name__)
-
+api = Api(app)
 # Tải mô hình ARIMA
 model = joblib.load('arima_model.joblib')
 
@@ -68,6 +69,18 @@ def index():
     """Hiển thị trang chủ."""
     prediction, trend = predict_covid()
     return render_template('index.html', prediction=prediction, trend=trend)
+class CovidPrediction(Resource):
+    def get(self):
+        """Trả về dự đoán số ca nhiễm và xu hướng."""
+        try:
+            prediction, trend = predict_covid()
+            return {
+                'prediction': prediction,
+                'trend': trend
+            }
+        except Exception as e:
+            return {'error': str(e)}, 500
 
+api.add_resource(CovidPrediction, '/api/predict')
 if __name__ == '__main__':
     app.run(debug=True)

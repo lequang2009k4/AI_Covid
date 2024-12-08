@@ -8,27 +8,32 @@ from flask_restful import Resource, Api
 app = Flask(__name__)
 api = Api(app)
 # Tải mô hình ARIMA
-model = joblib.load('arima_model.joblib')
+model = joblib.load('./arima_model.joblib')
 
 def get_covid_data():
-    """Lấy dữ liệu COVID-19 từ API."""
-    url = "https://disease.sh/v3/covid-19/historical/VietNam?lastdays=all"
+    url = "http://14.225.218.213:1337/api/statistics?pagination[page]=1&pagination[pageSize]=100&sort[0]=date:desc"
     response = requests.get(url)
     if response.status_code == 200:
         data = response.json()
-        timeline_data = data['timeline']
-        df = pd.DataFrame(timeline_data)
-        df = df.reset_index().rename(
-            columns={
-                'index': 'date',
-                'cases': 'cases',
-                'deaths': 'deaths',
-                'recovered': 'recovered'
-            })
-        df['date'] = pd.to_datetime(df['date'], format='%m/%d/%y')
-        covid_data = df.set_index('date')
-        covid_data = covid_data[['cases']]
-        covid_data = covid_data.reset_index()
+        df = pd.DataFrame(data['data'])
+
+        # Chuyển đổi kiểu dữ liệu của cột 'date' thành datetime và đặt làm index
+        df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
+        df = df.set_index('date')
+        # Lọc dữ liệu và chuẩn bị cho mô hình ARIMA
+        covid_data = df[['cases']]
+
+        # Xử lý dữ liệu bị thiếu (nếu có)
+        if covid_data.isnull().values.any():
+            covid_data.fillna(method='ffill', inplace=True)
+
+        # Sắp xếp dữ liệu theo ngày tháng
+        covid_data = covid_data.sort_index()
+        # Chuyển đổi cột 'cases' sang kiểu dữ liệu số
+        covid_data['cases'] = pd.to_numeric(covid_data['cases'], errors='coerce')
+
+        # Xử lý các giá trị không hợp lệ (ví dụ: thay thế bằng giá trị trung bình)
+        covid_data['cases'].fillna(covid_data['cases'].mean(), inplace=True)
         return covid_data
     else:
         raise Exception("Lỗi khi lấy dữ liệu từ API")
@@ -36,33 +41,19 @@ def get_covid_data():
 def predict_covid():
     """Dự đoán số ca nhiễm và xu hướng cho ngày mai."""
     covid_data = get_covid_data()
-    
-    # Xử lý dữ liệu
-    if covid_data.isnull().values.any():
-        covid_data.fillna(method='ffill', inplace=True)
-
-    # Chuẩn bị dữ liệu cho mô hình ARIMA
-    covid_data = covid_data.sort_values(by=['date'])
-    covid_data = covid_data.set_index('date')
-    covid_data = covid_data[['cases']]
-
-    # Chia dữ liệu thành tập huấn luyện và tập kiểm tra
-    train_size = int(len(covid_data) * 0.8)
-    train_data = covid_data[:train_size]
-
-    # Dự đoán số ca nhiễm cho ngày mai
-    predictions = model.predict(start=len(train_data), end=len(train_data))
+    predictions = model.predict(start=len(covid_data), end=len(covid_data))
+    predicted_value = predictions.iloc[0]
+    previous_cases = covid_data['cases'].iloc[-1]
 
     # Xác định xu hướng tăng hay giảm
-    previous_cases = train_data['cases'][-1]
-    if predictions[0] > previous_cases:
+
+    if predicted_value > previous_cases:
         trend = "Tăng"
-    elif predictions[0] < previous_cases:
+    elif predicted_value < previous_cases:
         trend = "Giảm"
     else:
         trend = "Không đổi"
-
-    return int(predictions[0]), trend
+    return int(predicted_value), trend
 
 @app.route('/')
 def index():

@@ -13,5 +13,7 @@
 ### 1. Yêu cầu hệ thống  
 - [**Python**](https://www.python.org/downloads/): Tối thiểu phiên bản 3.10.
 - **Yêu cầu về thư viện**: Flask, Flask-RESTful, numpy, joblib, requests, statsmodels, gunicorn.
-
+### 2. Khởi chạy model trên máy local
+- Di chuyển đến thư mục của dự án
+- Chạy lệnh python app.py để khởi chạy ứng dụng Flask, truy cập vào địa chỉ local để xem dự đoán của mô hình
 
